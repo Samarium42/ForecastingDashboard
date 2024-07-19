@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from warnings import filterwarnings
+from prophet import Prophet
 filterwarnings("ignore")
 
 st.markdown("""
@@ -40,13 +41,27 @@ def sarima_forecast():
     model = SARIMAX(train, order=(3, 0, 1), seasonal_order=(3, 0, 1, 30))
     model_fit = model.fit(disp=False)
     forecast = model_fit.forecast(steps=len(test))
+
+    st.line_chart(forecast)
+    st.line_chart(df)
     
-    # Plotting the results
-    fig, ax = plt.subplots()
-    ax.plot(test.index, test['SubTotal'], label='Actual')
-    ax.plot(test.index, forecast, label='Forecast', linestyle='--')
-    ax.legend()
-    st.pyplot(fig)
+
+def prophet_forecast():
+    df = pd.read_csv('./ForecastingDashboard/salesorderheader.csv')  # Ensure this file is in your directory
+    df = df[['OrderDate', 'SubTotal']]
+    df['OrderDate'] = pd.to_datetime(df['OrderDate'])
+    df.set_index('OrderDate', inplace=True)
+    df = df.groupby('OrderDate').sum()
+    train = df[:int(0.8 * len(df))]
+    test = df[int(0.8 * len(df)):]
+
+    model = Prophet()
+    model.fit(train.reset_index().rename(columns={'OrderDate': 'ds', 'SubTotal': 'y'}))
+    forecast = model.predict(test.reset_index().rename(columns={'OrderDate': 'ds'}))
+
+    st.line_chart(forecast[['ds', 'yhat']])
+    st.line_chart(df)
+    
 
 with col1:
     if st.button("SARIMA"):
