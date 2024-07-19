@@ -8,6 +8,7 @@ from prophet import Prophet
 import altair as alt
 from streamlit_navigation_bar import st_navbar
 import lightgbm as lgb
+import xgboost as xgb
 filterwarnings("ignore")
 
     
@@ -55,6 +56,7 @@ def sarima_forecast():
     
     
     st.altair_chart(chart1, use_container_width=True)
+    st.altair_chart(chart2, use_container_width=True)
     
 
 def prophet_forecast():
@@ -98,31 +100,50 @@ def xgboost_forecast():
     train = df[:int(0.8 * len(df))]
     test = df[int(0.8 * len(df)):]
 
-    model = Prophet()
-    model.fit(train.reset_index().rename(columns={'OrderDate': 'ds', 'SubTotal': 'y'}))
-    forecast = model.predict(test.reset_index().rename(columns={'OrderDate': 'ds'}))
+    def create_features(df,label= None):
 
-    future = model.make_future_dataframe(periods=30)
+        df['date'] = df.index
+        df['dayofweek'] = df['date'].dt.dayofweek
+        df['month'] = df['date'].dt.month
+        df['year'] = df['date'].dt.year
+        df['dayofyear'] = df['date'].dt.dayofyear
+        df['dayofmonth'] = df['date'].dt.day
+        X = df[['dayofweek','month','year','dayofyear','dayofmonth']]
+        if label:
+            y = df[label]
+            return X,y
+        return X
+    
+    X_train, y_train = create_features(train, label='SubTotal')
+    X_test, y_test = create_features(test, label='SubTotal')
 
-    chart1 = alt.Chart(forecast).mark_line().encode(
-        x='ds:T',
-        y='yhat:Q'
+
+    model = xgb.XGBRegressor(objective ='reg:squarederror', n_estimators=1000,verbose= True)
+    model.fit(X_train, y_train)   
+    test['Prediction'] = model.predict(X_test)
+    total = pd.concat([test, train], sort= False)
+    future = model.predict(create_features(total, label=None).tail(30))
+
+    chart1 = alt.Chart(test.reset_index()).mark_line().encode(
+        x='OrderDate:T',
+        y='Prediction:Q'
     ).properties(
         title='Sales and Test Forecast'
     )
-    chart2 = alt.Chart(future).mark_line(color='red').encode(
-        x='ds:T',
-        y='yhat:Q'
+
+    chart2 = alt.Chart(pd.DataFrame(future)).mark_line(color='red').encode(
+        x=alt.X('index:T', title='Date'),
+        y=alt.Y(0, title='Forecast')
     ).properties(
         title='Future Forecast'
     )
-    
+
     st.altair_chart(chart1, use_container_width=True)
     st.altair_chart(chart2, use_container_width=True)
     
 def lgbm():
 
-    df = pd.read_csv('./ForecastingDashboard/salesorder.csv')
+    df = pd.read_csv('./ForecastingDashboard/salesorderheader.csv')
     df = df[['OrderDate', 'SubTotal']]
     df['OrderDate'] = pd.to_datetime(df['OrderDate'])
     df.set_index('OrderDate', inplace=True)
@@ -131,10 +152,15 @@ def lgbm():
     train = df[:int(0.8 * len(df))]
     test = df[int(0.8 * len(df)):]
 
+    x_train = train.index.values.reshape(-1, 1)
+    y_train = train['SubTotal'].values
+    x_test = test.index.values.reshape(-1, 1)
+    y_test = test['SubTotal'].values
+
     model = lgb.LGBMRegressor()
-    model.fit(train.index.values.reshape(-1, 1), train['SubTotal'].values)
-    forecast = model.predict(test.index.values.reshape(-1, 1))
-    future = model.predict(pd.date_range(start=df.index[-1], periods=30).values.reshape(-1, 1))
+    model.fit(x_train, y_train)
+    forecast = model.predict(x_test)
+    future = model.predict(np.arange(len(df), len(df) + 30).reshape(-1, 1))
 
     forecast_df = pd.DataFrame(forecast, index=test.index, columns=['Forecast'])
     future_df = pd.DataFrame(future, index=pd.date_range(start=df.index[-1], periods=30), columns=['Forecast'])
