@@ -5,49 +5,49 @@ import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from warnings import filterwarnings
 from prophet import Prophet
+import altair as alt
+from streamlit_navigation_bar import st_navbar
 filterwarnings("ignore")
 
-st.markdown("""
-    <style>
-    .main .block-container {
-        padding-top: 2rem;
-        padding-bottom: 1rem;
-    }
-    .stButton button {
-        margin: auto;
-        display: block;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.markdown("<h1 style='text-align: center;'>Forecasting Dashboard</h1>", unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
-
-st.markdown("<h6 style='text-align: center;'>Select a model to forecast</h6>", unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
-
-col1, col2, col3, col4 = st.columns(4)
-
+    
 # Function to handle SARIMAX forecasting
 def sarima_forecast():
-    df = pd.read_csv('./ForecastingDashboard/salesorderheader.csv')  # Ensure this file is in your directory
+
+    df = pd.read_csv('salesorderheader.csv')  
     df = df[['OrderDate', 'SubTotal']]
     df['OrderDate'] = pd.to_datetime(df['OrderDate'])
     df.set_index('OrderDate', inplace=True)
     df = df.groupby('OrderDate').sum()
+    
     train = df[:int(0.8 * len(df))]
     test = df[int(0.8 * len(df)):]
     
     model = SARIMAX(train, order=(3, 0, 1), seasonal_order=(3, 0, 1, 30))
     model_fit = model.fit(disp=False)
     forecast = model_fit.forecast(steps=len(test))
-
-    st.line_chart(forecast)
-    st.line_chart(df)
+    
+    forecast_df = pd.DataFrame(forecast, index=test.index, columns=['Forecast'])
+    train['Type'] = 'Train'
+    test['Type'] = 'Test'
+    forecast_df['Type'] = 'Forecast'
+    
+    combined_df = pd.concat([train, test, forecast_df])
+    combined_df.reset_index(inplace=True)
+    combined_df.rename(columns={'OrderDate': 'Date'}, inplace=True)
+    
+    chart = alt.Chart(combined_df).mark_line().encode(
+        x='Date:T',
+        y='SubTotal:Q',
+        color='Type:N'
+    ).properties(
+        title='Sales and Forecast'
+    )
+    
+    st.altair_chart(chart, use_container_width=True)
     
 
 def prophet_forecast():
-    df = pd.read_csv('./ForecastingDashboard/salesorderheader.csv')  # Ensure this file is in your directory
+    df = pd.read_csv('salesorderheader.csv')  # Ensure this file is in your directory
     df = df[['OrderDate', 'SubTotal']]
     df['OrderDate'] = pd.to_datetime(df['OrderDate'])
     df.set_index('OrderDate', inplace=True)
@@ -63,12 +63,8 @@ def prophet_forecast():
     st.line_chart(df)
     
 
-with col1:
-    if st.button("SARIMA"):
-        sarima_forecast()
-with col2:
-    st.button("Prophet", key="prophet_button")
-with col3:
-    st.button("LGBM", key="lgbm_button")
-with col4:
-    st.button("XGBoost", key="xgboost_button")
+
+
+page = st_navbar(["SARIMAX", "Prophet", "XGBoost", "LGBM"])
+if page == "SARIMAX":
+    sarima_forecast()
