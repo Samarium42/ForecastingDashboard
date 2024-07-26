@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+from sklearn.metrics import accuracy_score
 from warnings import filterwarnings
 from prophet import Prophet
 import altair as alt
@@ -26,8 +27,11 @@ def sarima_forecast():
     model = SARIMAX(train, order=(3, 0, 1), seasonal_order=(3, 0, 1, 30))
     model_fit = model.fit(disp=False)
     forecast = model_fit.forecast(steps=len(test))
+    forecast_df = np.array(forecast)
+    forecast_df = pd.DataFrame(forecast_df, columns=['Forecast'])
+    forecast_df['OrderDate'] = test.index
+    forecast_df.set_index('OrderDate', inplace=True)
     
-    forecast_df = pd.DataFrame(forecast, index=test.index, columns=['Forecast'])
     train['Type'] = 'Train'
     test['Type'] = 'Test'
     forecast_df['Type'] = 'Forecast'
@@ -65,19 +69,11 @@ def sarima_forecast():
     st.altair_chart(chart1, use_container_width=True)
     st.altair_chart(chart2, use_container_width=True)
 
-    # Ensure alignment
-    if len(test) != len(forecast_df):
-        st.error('Length mismatch between test set and forecast.')
-        return
 
-    test_aligned = test.loc[forecast_df.index]
-    if len(test_aligned) != len(forecast_df):
-        st.error('Alignment issue between test and forecast data.')
-        return
+    root_mean_squared_error_percentage = np.mean(np.abs(test['SubTotal'] - forecast_df['Forecast'])/test['SubTotal'])
+    st.error(f'Root Mean Squared Error Percentage: {root_mean_squared_error_percentage}')
 
-    # Calculate the Mean Squared Percentage Error
-    mean_squared_percentage_error = np.mean(np.abs(test_aligned['SubTotal'] - forecast_df['Forecast']) / test_aligned['SubTotal']) * 100
-    st.error(f'Mean Absolute Percentage Error: {mean_squared_percentage_error:.2f}%')
+    
 
 def prophet_forecast():
     df = pd.read_csv('./ForecastingDashboard/salesorderheader.csv')
@@ -134,9 +130,10 @@ def prophet_forecast():
     if len(test_aligned) != len(test_forecast):
         st.error('Alignment issue between test and forecast data.')
         return
+    
+    print(test_aligned['y'].values)
 
-    mean_squared_percentage_error = np.mean(np.abs(test_aligned['y'] - test_forecast['yhat']) / test_aligned['y']) * 100
-    st.error(f'Mean Absolute Percentage Error: {mean_squared_percentage_error:.2f}%')
+    
     
 
 def xgboost_forecast():
@@ -194,8 +191,8 @@ def xgboost_forecast():
     st.altair_chart(chart1, use_container_width=True)
     st.altair_chart(chart2, use_container_width=True)
 
-    mean_squared_percentage_error = np.mean(np.abs(test['SubTotal'] - test['Prediction'])/test['SubTotal'])
-    st.error(f'Mean Squared Percentage Error: {mean_squared_percentage_error}')
+    root_mean_squared_percentage_error = np.mean(np.abs(test['SubTotal'] - test['Prediction'])/test['SubTotal'])
+    st.error(f'Mean Squared Percentage Error: {root_mean_squared_percentage_error}')
 
 def lgbm():
     df = pd.read_csv('./ForecastingDashboard/salesorderheader.csv')
@@ -252,8 +249,8 @@ def lgbm():
     st.altair_chart(chart1, use_container_width=True)
     st.altair_chart(chart2, use_container_width=True)
     
-    mean_squared_percentage_error = np.mean(np.abs(test['SubTotal'] - forecast)/test['SubTotal'])
-    st.error(f'Mean Squared Percentage Error: {mean_squared_percentage_error}')
+    root_mean_squared_percentage_error = np.mean(np.abs(test['SubTotal'] - forecast_df['Forecast'])/test['SubTotal'])
+    st.error(f'Mean Squared Percentage Error: {root_mean_squared_percentage_error}')
 
 
 page = st_navbar(["SARIMAX", "Prophet", "XGBoost", "LGBM"])
